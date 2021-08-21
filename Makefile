@@ -1,13 +1,20 @@
-CFLAGS += -Wall -ansi -pedantic -g
+IDIR = src
+ODIR = bin
+CC=gcc
+CFLAGS += -I$(IDIR) -Wall -ansi -pedantic -g
 
-assembler: 	 assembler.o parser.o tokenizer.o scan.o tables.o errors.o types.h consts.h
+_DEPS = types.h consts.h
+DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
 
-assembler.o: assembler.c parser.o 					  scan.o tables.o 					  		 consts.h
-parser.o: 	 parser.c 	 parser.h tokenizer.o 			 tables.o errors.o types.h consts.h				
-tokenizer.o: tokenizer.c          tokenizer.h 			 tables.o 				 types.h consts.h
-scan.o: 		 scan.c	     											scan.h tables.o errors.o types.h consts.h
-tables.o: 	 tables.c																 tables.h 				 types.h consts.h
-errors.o: 	 errors.c		 parser.h 														errors.h
+_OBJ = assembler.o parser.o tokenizer.o scan.o tables.o errors.o
+OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
+
+
+$(ODIR)/%.o: $(IDIR)/%.c $(DEPS)
+	$(CC) -c -o $@ $< $(CFLAGS)
+
+assembler: $(OBJ)
+	$(CC) -o $@ $^ $(CFLAGS)
 
 clean:
-	rm assembler assembler.o parser.o tokenizer.o scan.o tables.o errors.o
+	rm assembler -f $(ODIR)/*.o
