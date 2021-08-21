@@ -33,6 +33,8 @@
 #define EMSG_LABEL_ENT_UNDEF      "label declared entry but not defined in file"
 #define EMSG_LABEL_UNEXP_EXT      "external label operand to branch operation"
 #define WMSG_LABEL_JMP2DATA       "attempted jump to data symbol"
+#define WMSG_LABEL_DEF_ENTRY      "redundant label definition on .entry statement"
+#define WMSG_LABEL_DEF_EXTERN     "redundant label definition on .extern statement"
 
 /* printable token names */
 #define LABELDEF_TOK_NAME "label definition"
@@ -63,7 +65,9 @@ enum ErrId {
   ELABEL_EXP_CODE,        /* expected a code label                         */
   ELABEL_ENT_UNDEF,       /* label declared entry but not defined in file  */
   ELABEL_UNEXP_EXT,       /* external label operand to branch operation    */
-  WLABEL_JMP2DATA = -1    /* attempted jmp/branch to a data label          */
+  WLABEL_JMP2DATA = -1,   /* attempted jmp/branch to a data label          */
+  WLABEL_DEF_ENTRY = -2,  /* label definition on .entry statement          */
+  WLABEL_DEF_EXTERN = -3  /* label definition on .extern statement         */
 };
 typedef struct Error {
   enum ErrId errid;  /* ID of the error            */

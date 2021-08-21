@@ -31,6 +31,7 @@ extern int error_occurred;  /* defined in "errors.c" */
 
 /* ----- prototypes --------------------------------------- */
 Statement_t* parse_file(FILE *file);
+static void free_statement(Statement_t stm);
 static int parse_token   (Token_t tok, Statement_t *stm, long *flags);
 static int parse_op      (Token_t tok, Statement_t *stm, long *flags);
 static int parse_dir     (Token_t tok, Statement_t *stm, long *flags);
@@ -124,10 +125,14 @@ parse_labeldef(Token_t tok, Statement_t *stm, long *flags)
 {
   char** labelp = &stm->label;
   if(  -1 != search_op(tok.value.label)
-    || -1 != search_dir(tok.value.label))
+    || -1 != search_dir(tok.value.label)) {
+    free(tok.value.label);
     return EINVAL_LABEL;
-  if(strlen(tok.value.label) > MAX_LABEL_LEN)
+  }
+  if(strlen(tok.value.label) > MAX_LABEL_LEN) {
+    free(tok.value.label);
     return ELONG_LABEL;
+  }
   *labelp = tok.value.label;
   *flags = EXP_OP | EXP_DIR;
   return 0;
@@ -291,6 +296,7 @@ Statement_t* parse_file(FILE *file)
       error_occurred = 1;
       error.line_ind = i+1;
       print_error(error);
+      free(error.line);
     }
     statements[i].line_ind = i+1;
     i++;
@@ -326,19 +332,56 @@ parse_line(char *line, Statement_t *statement)
   }
   for (token = next_token(line); ; token = next_token(NULL)) {
     if(0 != (errid = parse_token(token, statement, &flags))) {  /* error occured */
+      /* free the token's allocated string value */
+      if(  token.type == TOK_STRING
+        || token.type == TOK_LABEL)
+        free(token.value.str);
       goto Error;
     }
     if(statement->type == STATEMENT_IGNORE || token.type == TOK_END) break;
   }
+  free(line_cpy);
   return 0;
 Error:
+    free_statement(*statement);
     statement->type = STATEMENT_ERROR;
-    free(error.line);
     error.errid = errid;
     error.line = line_cpy;
     error.tok = token;
     error.flags = flags;
     return errid;
+}
+
+/*
+ * Frees all the statement's allocated memory.
+ */
+static void
+free_statement(Statement_t stm)
+{
+  free(stm.label);
+  /* operation statement */
+  if(stm.type == STATEMENT_OPERATION) {
+    switch(OPCODE_TO_OPTYPE(stm.inst.op_inst.opcode)) {
+      case OPTYPE_I:
+        free(stm.inst.op_inst.op.Iop.label);
+        break;
+      case OPTYPE_J:
+        free(stm.inst.op_inst.op.Jop.label);
+    }
+  }
+  /* directive statement */
+  else if(stm.type == STATEMENT_DIRECTIVE) {
+    switch(stm.inst.di_inst.dirid) {
+      case DIR_ENTRY:
+      case DIR_EXTERN:
+      case DIR_ASCIZ:
+        free(stm.inst.di_inst.dir.Sdir.str);
+        break;
+      default:
+        free(stm.inst.di_inst.dir.Adir.argv);
+    }
+
+  }
 }
 
 /*

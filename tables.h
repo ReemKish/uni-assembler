@@ -23,6 +23,8 @@ typedef struct SymbolEntry {
   int32_t offset;
   int attr;       /* bitwise-OR of SYM_DATA, SYM_CODE, SYM_ENTRY, SYM_EXTERN, SYM_REQUIRED */
 } SymbolEntry_t;
+void init_symtable();
+void cleanup_symtable();
 void add_symbol(SymbolEntry_t symbol);
 SymbolEntry_t* search_symbol(char *name);
 

@@ -99,6 +99,7 @@ log_label(char *label, int attr, int line_ind)
 
   /* label already exists in symbol table */
   if(NULL != ( symbolp = search_symbol(label))) {
+    free(label);
     if((symbolp->offset >= 0) && ((attr & SYM_CODE) || (attr & SYM_DATA))) {
       /* error - attempted label definition but label was already defined */
       error.errid = ELABEL_DOUBLE_DEF;
@@ -160,6 +161,7 @@ write_memory(char *data, int count, int size)
 {
   memcpy(&mem_img[DC], data, size*count);
   DC += size*count;
+  free(data);
 }
 
 
@@ -203,14 +205,16 @@ perform_directive(Statement_t stm)
  * Scans the array of assembly statements and handles all directives
  * and label definitions. As a results, both the program's memory image
  * and it's symbol table are assembled.
- * returns -1 if an error occured, else 0.
  */
 void
 write_memory_image(Statement_t *statements)
 {
   int i;
-  Statement_t stm;
-  for(i=0; stm.type != STATEMENT_END; stm = statements[i++]) {
+  Statement_t stm = statements[0];
+  Error_t warning;
+  warning.line = NULL;
+  warning.tok.ind = -1;
+  for(i=1; stm.type != STATEMENT_END; stm = statements[i++]) {
     switch(stm.type) {
       case STATEMENT_OPERATION:
         if(stm.label != NULL) /* statement contains label definition */
@@ -218,11 +222,23 @@ write_memory_image(Statement_t *statements)
         IC += 4;
         break;
       case STATEMENT_DIRECTIVE:
-        if(stm.label != NULL
-           && stm.inst.di_inst.dirid != DIR_ENTRY
-           && stm.inst.di_inst.dirid != DIR_EXTERN)
+        if(stm.label != NULL) {
+          if(stm.inst.di_inst.dirid == DIR_ENTRY) {
+            free(stm.label);
+            warning.errid = WLABEL_DEF_ENTRY;
+            warning.line_ind = stm.line_ind;
+            print_error(warning);
+          }
+          else if(stm.inst.di_inst.dirid == DIR_EXTERN) {
+            free(stm.label);
+            warning.line_ind = stm.line_ind;
+            warning.errid = WLABEL_DEF_EXTERN;
+            print_error(warning);
+          }
+          else
+            log_label(stm.label, SYM_DATA, stm.line_ind);
+        }
           /* statement contains label definition */
-          log_label(stm.label, SYM_DATA, stm.line_ind);
         perform_directive(stm);
       case STATEMENT_ERROR:
       default:
@@ -230,6 +246,7 @@ write_memory_image(Statement_t *statements)
     }
   }
 }
+
 
 /*
  * Scans the array of assembly statements and handles all operations.
@@ -308,24 +325,31 @@ check_symtable_integrity(Error_t *error)
 static int  /* error id - nonzero on failure */
 handle_branch_op(Op_t *op)
 {
-  SymbolEntry_t *symbol, symbol_req;
-  symbol = search_symbol(op->Iop.label);
-  if (symbol == NULL) {
+  enum ErrId errid = 0;
+  SymbolEntry_t *symbolp, symbol_req;
+  symbolp = search_symbol(op->Iop.label);
+  if (symbolp == NULL) {
     /* error - undefined label */
+    free(op->Iop.label);
     return ELABEL_UNDEFINED;
-  } else if (symbol->attr & SYM_EXTERN) {
+  } else if(symbolp->attr & SYM_EXTERN) {
+    free(op->Iop.label);
     return ELABEL_UNEXP_EXT;
-  } else if(symbol->attr & SYM_DATA) {
-    /* error - branch to data label */
-    return WLABEL_JMP2DATA;
   } else {
-    op->Iop.immed = symbol->offset - IC;
+    if(symbolp->attr & SYM_DATA) {
+      /* warning - jump to data symbol */
+      errid = WLABEL_JMP2DATA;
+    }
+    if(symbolp->attr & SYM_DATA)
+      op->Iop.immed = symbolp->offset - IC + ICF;
+    else
+      op->Iop.immed = symbolp->offset - IC;
     symbol_req.name = op->Iop.label;
-    symbol_req.attr = symbol->attr | SYM_REQUIRED;
+    symbol_req.attr = symbolp->attr | SYM_REQUIRED;
     symbol_req.offset = IC;
     add_symbol(symbol_req);
   }
-  return 0;
+  return errid;
 }
 
 
@@ -342,11 +366,14 @@ handle_la_op(Op_t *op)
   symbol = search_symbol(op->Jop.label);
   if (symbol == NULL) {
     /* error - undefined label */
+    free(op->Jop.label);
     return ELABEL_UNDEFINED;
   } else if (!(symbol->attr & SYM_EXTERN) && !(symbol->attr & SYM_DATA)) {
     /* error - expected a data symbol */
+    free(op->Jop.label);
     return ELABEL_EXP_DATA;
-  } else {
+  }
+  else {
     op->Jop.addr = symbol->attr & SYM_EXTERN ? 0 : symbol->offset + ICF + INITIAL_IC;
     symbol_req.name = op->Jop.label;
     symbol_req.attr = symbol->attr | SYM_REQUIRED;
@@ -362,23 +389,31 @@ handle_la_op(Op_t *op)
 static int  /* error id - nonzero on failure */
 handle_jmp_op(Op_t *op)
 {
-  SymbolEntry_t *symbol, symbol_req;
+  enum ErrId errid = 0;
+  SymbolEntry_t *symbolp, symbol_req;
   if(op->Jop.label == NULL) {
     return 0;
   }
-  symbol = search_symbol(op->Jop.label);
-  if (symbol == NULL) {
+  symbolp = search_symbol(op->Jop.label);
+  if (symbolp == NULL) {
     /* error - undefined label */
+    free(op->Jop.label);
     return ELABEL_UNDEFINED;
-  } else if ((symbol->attr & SYM_DATA)) {
-    /* error - expected code label */
-    return WLABEL_JMP2DATA;
   } else {
-    op->Jop.addr = symbol->attr & SYM_EXTERN ? 0 : symbol->offset + INITIAL_IC;
+    if((symbolp->attr & SYM_DATA)) {
+    /* warning - jump to data symbol */
+      errid = WLABEL_JMP2DATA;
+    }
+    if(symbolp->attr & SYM_EXTERN)
+      op->Jop.addr = 0;
+    else if(symbolp->attr & SYM_DATA)
+      op->Jop.addr = symbolp->offset + ICF + INITIAL_IC;
+    else
+      op->Jop.addr = symbolp->offset + INITIAL_IC;
     symbol_req.name = op->Jop.label;
-    symbol_req.attr = symbol->attr | SYM_REQUIRED;
+    symbol_req.attr = symbolp->attr | SYM_REQUIRED;
     symbol_req.offset = IC;
     add_symbol(symbol_req);
   }
-  return 0;
+  return errid;
 }

@@ -141,6 +141,12 @@ print_errstr(Error_t error)
     case WLABEL_JMP2DATA:
             printf(WMSG_LABEL_JMP2DATA);
             break;
+    case WLABEL_DEF_ENTRY:
+            printf(WMSG_LABEL_DEF_ENTRY);
+            break;
+    case WLABEL_DEF_EXTERN:
+            printf(WMSG_LABEL_DEF_EXTERN);
+            break;
     }
 }
 

@@ -23,6 +23,7 @@
 /* ----- prototypes --------------------------------------- */
 int search_op(char *term);
 int search_dir(char *term);
+void init_symtable();
 void add_symbol(SymbolEntry_t symbol);
 SymbolEntry_t* search_symbol(char *name);
 
@@ -82,7 +83,7 @@ op_cmp(const void *op1, const void *op2)
  * if found - returns the operation id.
  * Else returns -1.
  */
-int  /* nonzero if not found */
+int  /* the operation id */
 search_op(char *term)
 {
   struct op *op = bsearch(&term, operations, OPERATIONS_CNT, sizeof *operations, op_cmp);
@@ -120,7 +121,7 @@ dir_cmp(const void *dir1, const void *dir2)
  * if found - returns the directive id.
  * Else returns -1
  */
-int  /* nonzero if not found */
+int  /* the directive id */
 search_dir(char *term)
 {
   struct dir *dir = bsearch(&term, directives, DIRECTIVES_CNT, sizeof *directives, dir_cmp);
@@ -131,9 +132,34 @@ search_dir(char *term)
 
 
 /* ===== Symbol table ===================================== */
-static int symtable_maxsize=2;
+static int symtable_maxsize;
 SymbolEntry_t *symtable = NULL;
-int symtable_size=0;
+int symtable_size;
+
+/*
+ * Initializes the symbol table.
+ * Discards previously stored symbols.
+ */
+void
+init_symtable()
+{
+  symtable_maxsize = 2;
+  symtable_size = 0;
+  symtable = realloc(symtable, symtable_maxsize * sizeof(SymbolEntry_t));
+}
+
+/*
+ * Frees up all memory used by the symbol table and symbols in it.
+ */
+void
+cleanup_symtable()
+{
+  int i;
+  for(i=0; i<symtable_size; i++) {
+    free(symtable[i].name);
+  }
+  free(symtable);
+}
 
 /*
  * Adds a symbol to the symbol table.
@@ -141,9 +167,7 @@ int symtable_size=0;
 void
 add_symbol(SymbolEntry_t symbol)
 {
-  if(symtable == NULL) {
-    symtable = calloc(symtable_maxsize, sizeof(SymbolEntry_t));
-  } else if(symtable_size == symtable_maxsize) {
+  if(symtable_size == symtable_maxsize) {
     symtable_maxsize *= 2;
     symtable = realloc(symtable, symtable_maxsize * sizeof(SymbolEntry_t));
   }

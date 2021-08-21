@@ -21,6 +21,7 @@
 /* ===== CPP definitons =================================== */
 #define HELP_TEXT   "usage: %s file1 [file2] [file3] ..."
 #define NOARGS_ERR  "missing argument"
+#define EXT_ERR     "%s: %s: source file extension must be .as"
 
 /* ===== Declarations ===================================== */
 char *filename, *filepath;
@@ -95,6 +96,7 @@ write_ob_file()
   char *obfilename = modify_file_ext(filepath, ".ob");
   FILE *obfile = fopen(obfilename, "w");
   int i;
+  free(obfilename);  /* was only required to open file */
 
   /* header line */
   fprintf(obfile, "     %lu %lu\n%04d ", ICF, DCF, INITIAL_IC);
@@ -106,6 +108,7 @@ write_ob_file()
     else fprintf(obfile, " ");
   }
   fprintf(obfile, "%02X\n", get_img_byte(ICF+DCF-1) & 0xFF);
+  if(obfile) fclose(obfile);
 }
 
 
@@ -124,13 +127,14 @@ write_ext_file()
     if((symbol.attr & SYM_REQUIRED) && (symbol.attr & SYM_EXTERN)) {
       if(extfile == NULL) /* only create file if relevant */ {
         extfile = fopen(extfilename, "w");
+        free(extfilename);  /* was only required to open file */
       }
       fprintf(extfile, "%s %04ld\n", symbol.name,
           symbol.offset + INITIAL_IC + (symbol.attr & SYM_DATA ? ICF : 0)
       );
     }
   }
-
+  if(extfile) fclose(extfile);
 }
 
 /*
@@ -148,13 +152,14 @@ write_ent_file()
     if((symbol.attr & SYM_ENTRY) && !(symbol.attr & SYM_REQUIRED)) {
       if(entfile == NULL) /* only create file if relevant */ {
         entfile = fopen(entfilename, "w");
+        free(entfilename);  /* was only required to open file */
       }
       fprintf(entfile, "%s %04ld\n", symbol.name,
           symbol.offset + INITIAL_IC + (symbol.attr & SYM_DATA ? ICF : 0)
       );
     }
   }
-
+  if(entfile) fclose(entfile);
 }
 
 /* 
@@ -168,18 +173,22 @@ int  /* nonzero on failure */
 assemble(FILE *source)
 {
   /* init */
-  Statement_t *statements = parse_file(source);
+  Statement_t *statements;
   error_occurred = 0;
+  statements = parse_file(source);
   IC = 0; DC = 0;
   memset(inst_img, 0, sizeof(inst_img));
   memset(mem_img, 0, sizeof(mem_img));
+  init_symtable();
 
   write_memory_image(statements);
   ICF = IC; DCF = DC;
   IC = 0; DC = 0;
   write_instruction_image(statements);
+  free(statements);
   /* can be set by any of the above calls */
   if(error_occurred) return 1;
+
 
   write_ob_file();
   write_ext_file();
@@ -212,11 +221,17 @@ main(int argc, char** argv)
       /* file won't open - print error message and skip it */
       error(0, errno, "%s", argv[i]);
     else {
+      if(0 != strcmp(".as", get_file_ext(filename))) {
+        fclose(file);
+        printf(EXT_ERR"\n", argv[0], filepath);
+        continue;
+      }
       if(assemble(file) != 0)
         exit_status = 1;
     }
+    if(file) fclose(file);
+    cleanup_symtable();
   }
 
   return exit_status;
 }
-

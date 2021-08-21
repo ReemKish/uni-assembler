@@ -131,11 +131,13 @@ tokenize_string(char *term, TokVal_t *tokval)
 static int  /* nonzero on failure */
 tokenize_labeldef(char *term, TokVal_t *tokval)
 {
+  int len = strlen(term);
   if (!is_labeldef(term)) {
     return -1;
   }
-  tokval->label = malloc(strlen(term));
-  strncpy(tokval->label, term, strlen(term)-1);
+  tokval->label = malloc(len);
+  strncpy(tokval->label, term, len-1);
+  tokval->label[len-1] = '\0';
   return 0;
 }
 
