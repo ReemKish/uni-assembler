@@ -1,26 +1,56 @@
+/* ===== parser.c ======================================
+ * This module is responsible for processing the raw input (lines of the source file)
+ * into meaningful tokens. The way this is done is via the main function next_token which
+ * receives a line of assembly source code and outputs the next token in it with each
+ * successive call.
+ * Each token has a type, and stores a value corresponding to that type.
+ * e.g: a token of type REG_TOK stores the id of a register.
+ * The Token_t data structure and the enumeration of the token types are defined in "types.h".
+ */
+
 /* ===== Includes ========================================= */
-#include <stdio.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <malloc.h>
 #include <string.h>
 #include <ctype.h>
-#include "tokenizer.h"
 #include "parser.h"
-#include "types.h"
-#include "consts.h"
+#include "tokenizer.h"
 #include "tables.h"
 #include "errors.h"
+#include "types.h"
+#include "consts.h"
 
+/* ===== CPP Definitions ================================== */
+/* evaluates to 1 iff x is in bounds of signed int with n bits */
+#define IN_BOUNDS(x,n) ((-1 * (1L << ((n)-1)) <= (x)) && ((x) < (1L << ((n)-1))))
 
 /* ===== Declarations ===================================== */
-static Error_t error;  /* like errno for statement errors */
-int parse_line(char *line, Statement_t *statement);
-int parse_token(Token_t token, Statement_t *statement, long *flags);
+static Error_t error;   /* errno for statement errors */
+extern int error_occurred;  /* defined in "errors.c" */
 
+/* ----- prototypes --------------------------------------- */
+Statement_t* parse_file(FILE *file);
+static int parse_token   (Token_t tok, Statement_t *stm, long *flags);
+static int parse_op      (Token_t tok, Statement_t *stm, long *flags);
+static int parse_dir     (Token_t tok, Statement_t *stm, long *flags);
+static int parse_labeldef(Token_t tok, Statement_t *stm, long *flags);
+static int parse_label   (Token_t tok, Statement_t *stm, long *flags);
+static int parse_reg     (Token_t tok, Statement_t *stm, long *flags);
+static int parse_immed   (Token_t tok, Statement_t *stm, long *flags);
+static int parse_string  (Token_t tok, Statement_t *stm, long *flags);
+static int parse_line(char *line, Statement_t *statement);
 
 /* ===== Code ============================================= */
-int parse_op(Token_t tok, Statement_t *stm, long *flags)
+
+/*
+ * Parses tok as an operation token and updates stm and flags accordingly.
+ * Sets the statement type and instruction opcode, and in case
+ * of a R-type op, the funct field.
+ * Always returns 0 to indicate no errors.
+ */
+static int  /* always 0 */
+parse_op(Token_t tok, Statement_t *stm, long *flags)
 {
   enum OpId opid = tok.value.opid;
   enum OpType optype = OPID_TO_OPTYPE(opid);
@@ -50,7 +80,14 @@ int parse_op(Token_t tok, Statement_t *stm, long *flags)
 }
 
 
-int parse_dir(Token_t tok, Statement_t *stm, long *flags)
+/*
+ * Parses tok as a directive token and updates stm and flags accordingly.
+ * Sets the statement type and directive id.
+ * If the token's dirid is invalid, returns EINVAL_DIR,
+ * else 0 to indicate no erros.
+ */
+static int  /* nonzero on failure */
+parse_dir(Token_t tok, Statement_t *stm, long *flags)
 {
   enum DirId dirid = tok.value.dirid;
   DirInstruction_t *di_inst = &stm->inst.di_inst;
@@ -74,15 +111,36 @@ int parse_dir(Token_t tok, Statement_t *stm, long *flags)
   return 0;
 }
 
-int parse_labeldef(Token_t tok, Statement_t *stm, long *flags)
+
+/*
+ * Parses tok as a label definiton token and updates stm and flags accordingly.
+ * Sets the statement label.
+ * If the label name is a reserved keyword returns EINVAL_LABEL.
+ * If the label name is longer than MAX_LABEL_LEN, returns ELONG_LABEL.
+ * Else 0 to indicate no erros.
+ */
+static int  /* always 0 */
+parse_labeldef(Token_t tok, Statement_t *stm, long *flags)
 {
   char** labelp = &stm->label;
+  if(  -1 != search_op(tok.value.label)
+    || -1 != search_dir(tok.value.label))
+    return EINVAL_LABEL;
+  if(strlen(tok.value.label) > MAX_LABEL_LEN)
+    return ELONG_LABEL;
   *labelp = tok.value.label;
   *flags = EXP_OP | EXP_DIR;
   return 0;
 }
 
-int parse_label(Token_t tok, Statement_t *stm, long *flags)
+
+/*
+ * Parses tok as a label token and updates stm and flags accordingly.
+ * Sets the Iop/Jop instruction label.
+ * Always returns 0 to indicate no erros.
+ */
+static int  /* always 0 */
+parse_label(Token_t tok, Statement_t *stm, long *flags)
 {
   char **labelp;
   labelp = OPCODE_TO_OPTYPE(stm->inst.op_inst.opcode) == OPTYPE_I ?
@@ -93,7 +151,19 @@ int parse_label(Token_t tok, Statement_t *stm, long *flags)
   return 0;
 }
 
-int parse_reg(Token_t tok, Statement_t *stm, long *flags)
+
+/*
+ * Parses tok as a register token and updates stm and flags accordingly.
+ * If the currently parsed operation is of type:
+ *  R-type or I-type:
+ *    sets the appropriate register field according to the set flag (REG_RS, REG_RD or REG_RT)
+ *  J-type:
+ *    sets the reg field to 1 and the addr field to the regiser id.
+ * If the register id is not a valid register, returns EINVAL_REG,
+ * else returns 0 to indicate no erros.
+ */
+static int  /* nonzero on failure */
+parse_reg(Token_t tok, Statement_t *stm, long *flags)
 {
   int reg = tok.value.reg;
   OpInstruction_t *op_inst = &(stm->inst.op_inst);
@@ -150,17 +220,28 @@ int parse_reg(Token_t tok, Statement_t *stm, long *flags)
   return 0;
 }
 
-int parse_immed(Token_t tok, Statement_t *stm, long *flags)
+
+/*
+ * Parses tok as an immediate token and updates stm and flags accordingly.
+ * If the currently parsed instruction is of type:
+ *  Operation:
+ *    sets the Iop immed field to the token's immediate.
+ *  Directive:
+ *    appends the token's immediate to the argument array of the directive.
+ * If the immediate is out of bounds for a 16-bit signed integer, returns EINVAL_IMMED,
+ * else returns 0 to indicate no erros.
+ */
+static int  /* nonzero on failure */
+parse_immed(Token_t tok, Statement_t *stm, long *flags)
 {
   struct AtypeDir *Adir = &(stm->inst.di_inst.dir.Adir);
   int size=0, i;
   int immed = tok.value.immed;
-  if(immed > 32767 || immed < -32768) {
-    return EINVAL_IMMED;
-  }
   /* determine which operand corresponds to the register */
   if (stm->type == STATEMENT_OPERATION) {
     stm->inst.op_inst.op.Iop.immed = immed;
+    if(!IN_BOUNDS(immed, 16))
+      return EINVAL_IMMED;
     *flags = EXP_REG | REG_RT;
   } else {
     switch(stm->inst.di_inst.dirid) {
@@ -168,6 +249,9 @@ int parse_immed(Token_t tok, Statement_t *stm, long *flags)
       case DIR_DH: size = 2; break;
       case DIR_DW: size = 4; break;
       default: break;
+    }
+    if(!IN_BOUNDS(immed, size*8)) {
+      return EINVAL_IMMED;
     }
     Adir->argv = realloc(Adir->argv, (Adir->argc + 1) * size);
     for(i=0; i<size; i++) {
@@ -179,34 +263,49 @@ int parse_immed(Token_t tok, Statement_t *stm, long *flags)
   return 0;
 }
 
-int parse_string(Token_t tok, Statement_t *stm, long *flags)
+
+/*
+ * Parses tok as a string token and updates stm and flags accordingly.
+ * Sets the .asciz directive's string field.
+ * Always returns 0 to indicate no erros.
+ */
+static int  /* always 0 */
+parse_string(Token_t tok, Statement_t *stm, long *flags)
 {
   stm->inst.di_inst.dir.Sdir.str = tok.value.str;
   *flags = EXP_END;
   return 0;
 }
 
-/* parses the assembly source code in file into an array of statements.
- **/
+/*
+ * Parses the assembly source code in file into an array of statements.
+ */
 Statement_t* parse_file(FILE *file)
 {
   enum ErrId errid;
-  Statement_t *statements = malloc(sizeof(Statement_t) * (MAX_PROG_LINES+1));
-  char* line = malloc(MAX_LINE_LEN+2);  /* two extra bytes for newline and null terminator */
+  Statement_t *statements = calloc((MAX_PROG_LINES+1), sizeof(Statement_t));
+  char line[LINE_BUFFER_SIZE];
   int i = 0;
-  while (NULL != fgets(line, MAX_LINE_LEN+2, file)) {
-    if (0 != (errid = parse_line(line, &statements[i++]))) {  /* error occured */
-      print_error(error, i);
+  while (NULL != fgets(line, LINE_BUFFER_SIZE, file)) {
+    if (0 != (errid = parse_line(line, &statements[i]))) {  /* error occured */
+      error_occurred = 1;
+      error.line_ind = i+1;
+      print_error(error);
     }
+    statements[i].line_ind = i+1;
+    i++;
   }
   statements[i].type = STATEMENT_END;
   return statements;
 }
 
 
-/* parses the assembly source code in line into a statement.
- **/
-int parse_line(char *line, Statement_t *statement)
+/*
+ * Parses the assembly source code in line into a statement.
+ * On failure, updates the static error variable and returns the error id.
+ */
+static int  /* error id - nonzero on failure */
+parse_line(char *line, Statement_t *statement)
 {
   enum ErrId errid;
   Token_t token;
@@ -220,22 +319,34 @@ int parse_line(char *line, Statement_t *statement)
 
   strcpy(line_cpy, line);
   memset(statement, 0, sizeof(*statement));
+  if(strlen(line) > MAX_LINE_LEN) {
+    token.ind = -1;
+    errid = ELONG_LINE;
+    goto Error;
+  }
   for (token = next_token(line); ; token = next_token(NULL)) {
     if(0 != (errid = parse_token(token, statement, &flags))) {  /* error occured */
-      statement->type = STATEMENT_ERROR;
-      free(error.line);
-      error.errid = errid;
-      error.line = line_cpy;
-      error.tok = token;
-      error.flags = flags;
-      return errid;
+      goto Error;
     }
     if(statement->type == STATEMENT_IGNORE || token.type == TOK_END) break;
   }
   return 0;
+Error:
+    statement->type = STATEMENT_ERROR;
+    free(error.line);
+    error.errid = errid;
+    error.line = line_cpy;
+    error.tok = token;
+    error.flags = flags;
+    return errid;
 }
 
-int parse_token(Token_t tok, Statement_t *stm, long *flags)
+/*
+ * Parses the token and updates stm accordingly.
+ * On failure, returns the error id.
+ */
+static int  /* error id - nonzero on failure */
+parse_token(Token_t tok, Statement_t *stm, long *flags)
 {
   enum ErrId errid = EUNEXPECTED_TOK;
   switch(tok.type) {

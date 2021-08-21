@@ -1,48 +1,65 @@
+/* ===== tokenizer.c ======================================
+ * This module is responsible for processing the raw input (lines of the source file)
+ * into meaningful tokens. The way this is done is via the main function next_token which
+ * receives a line of assembly source code and outputs the next token in it with each
+ * successive call.
+ * Each token has a type, and stores a value corresponding to that type.
+ * e.g: a token of type REG_TOK stores the id of a register.
+ * The Token_t data structure and the enumeration of the token types are defined in "types.h".
+ */
+
 /* ===== Includes ========================================= */
 #include <stdlib.h>
 #include <stdio.h>
 #include <malloc.h>
 #include <string.h>
 #include <ctype.h>
+#include "tables.h"
 #include "types.h"
 #include "consts.h"
-#include "tables.h"
 
+
+/* ===== CPP definitons =================================== */
+#define COMMENT_CHAR ';'
+#define WSPACE_CHARS " \f\n\r\t\v"
 
 /* ===== Declarations ===================================== */
 static long expect;
 
-int tokenize_op(char *term, TokVal_t *tokval);
-int tokenize_labeldef(char *term, TokVal_t *tokval);
-int tokenize_label(char *term, TokVal_t *tokval);
-int tokenize_reg(char *term, TokVal_t *tokval);
-int tokenize_immed(char *term, TokVal_t *tokval);
-
-int is_string(char *term);
-int is_label(char *term);
-int is_labeldef(char *term);
-int parse_reg_term(char *term);
-int parse_immed_term(char *term);
-
-Token_t tokenize_term(char *term);
+/* ----- prototypes --------------------------------------- */
 Token_t next_token(char *line);
-char *  next_term(char *line);
-char * next_string(char *line);
-char* next_array_item(char *line);
-char* strip_wspace(char *term);
+static Token_t tokenize_term(char *term);
+static char *  next_term(char *line);
+static char * next_string(char *line);
+static char* next_array_item(char *line);
+static char* strip_wspace(char *term);
+
+static int tokenize_op(char *term, TokVal_t *tokval);
+static int tokenize_labeldef(char *term, TokVal_t *tokval);
+static int tokenize_label(char *term, TokVal_t *tokval);
+static int tokenize_reg(char *term, TokVal_t *tokval);
+static int tokenize_immed(char *term, TokVal_t *tokval);
+
+static int is_string(char *term);
+static int is_label(char *term);
+static int is_labeldef(char *term);
+static int parse_reg_term(char *term);
+
 
 /* ===== CPP Definitions ================================== */
-/* ----- flags -------------------------------------------- */
-#define EXP_STRING  1
-#define EXP_ARRAY   2
+/* expect values, see flags handling of next_term */
+#define EXP_STRING  (1)
+#define EXP_ARRAY   (2)
 
 /* ===== Code ============================================= */
 
-/* attempts to process the term as an operation token,
- * on success updates tokval with the operation id and returns 0;
- * on failure tokval is not modified and -1 is returned.
- * */
-int tokenize_op(char *term, TokVal_t *tokval)
+/* 
+ * Attempts to process the term as an operation token,
+ * on success updates tokval with the operation id and returns 0.
+ * On failure tokval is not modified and -1 is returned.
+ */
+static int /* nonzero on failure */
+tokenize_op(char *term, TokVal_t *tokval)
 {
   enum OpId opid;
   if(-1 == (opid = search_op(term))) {
@@ -54,23 +71,28 @@ int tokenize_op(char *term, TokVal_t *tokval)
 }
 
 
-/* attempts to process the term as a directive token,
+/*
+ * Attempts to process the term as a directive token,
  * all directives start with '.', hence, if the term doesn't
  * start with '.', -1 is returned and the token isn't modified.
- * else if the term isn't a recognized directive, -2 is returned
+ * Else if the term isn't a recognized directive, -2 is returned
  *  and the token's dirid is set to DIR_INVALID.
- * else, the term is a recognized directive and 0 is returned.
- * */
-int tokenize_dir(char *term, TokVal_t *tokval)
+ * Else, the term is a recognized directive and therefore 0 is returned.
+ */
+static int  /* nonzero on failure */
+tokenize_dir(char *term, TokVal_t *tokval)
 {
   enum DirId dirid;
   if(term[0] != '.') {
+    /* term doesn't start with a dot and hence isn't a directive at all */
     return -1;
   }
-  if(-1 == (dirid = search_dir(term))) {
+  if(-1 == (dirid = search_dir(&term[1]))) {
+    /* term isn't a recognized directive */
     tokval->dirid = DIR_INVALID;
     return -2;
   }
+  /* term is a recognized directive */
   tokval->dirid = dirid;
   if(dirid == DIR_ASCIZ) {
     expect = EXP_STRING;
@@ -81,11 +103,13 @@ int tokenize_dir(char *term, TokVal_t *tokval)
 }
 
 
-/* attempts to process the term as a string token,
- * on success updates tokval with the string (without the quotes) and returns 0;
- * on failure tokval is not modified and -1 is returned.
- * */
-int tokenize_string(char *term, TokVal_t *tokval)
+/* 
+ * Attempts to process the term as a string token,
+ * on success updates tokval with the string (without the quotes) and returns 0.
+ * On failure tokval is not modified and -1 is returned.
+ */
+static int  /* nonzero on failure */
+tokenize_string(char *term, TokVal_t *tokval)
 {
   int len = strlen(term);
   if (!is_string(term)) {
@@ -98,11 +122,14 @@ int tokenize_string(char *term, TokVal_t *tokval)
   return 0;
 }
 
-/* attempts to process the term as a labeldef token,
- * on success updates tokval with the label string and returns 0;
- * on failure tokval is not modified and -1 is returned.
- * */
-int tokenize_labeldef(char *term, TokVal_t *tokval)
+
+/*
+ * Attempts to process the term as a labeldef token,
+ * on success updates tokval with the label string and returns 0.
+ * On failure tokval is not modified and -1 is returned.
+ */
+static int  /* nonzero on failure */
+tokenize_labeldef(char *term, TokVal_t *tokval)
 {
   if (!is_labeldef(term)) {
     return -1;
@@ -112,27 +139,31 @@ int tokenize_labeldef(char *term, TokVal_t *tokval)
   return 0;
 }
 
-/* attempts to process the term as a label token,
- * on success updates tokval with the label string and returns 0;
- * on failure tokval is not modified and -1 is returned.
- * */
-int tokenize_label(char *term, TokVal_t *tokval)
+
+/*
+ * Attempts to process the term as a label token,
+ * on success updates tokval with the label string and returns 0.
+ * On failure tokval is not modified and -1 is returned.
+ */
+static int  /* nonzero on failure */
+tokenize_label(char *term, TokVal_t *tokval)
 {
   if (!is_label(term)) {
     return -1;
   }
-
   tokval->label = malloc(strlen(term)+1);
   strcpy(tokval->label, term);
   return 0;
 }
 
 
-/* attempts to process the term as a register token,
- * on success updates tokval with the register id and returns 0;
- * on failure tokval is not modified and -1 is returned.
- * */
-int tokenize_reg(char *term, TokVal_t *tokval)
+/* 
+ * Attempts to process the term as a register token,
+ * on success updates tokval with the register id and returns 0.
+ * On failure tokval is not modified and -1 is returned.
+ */
+static int  /* nonzero on failure */
+tokenize_reg(char *term, TokVal_t *tokval)
 {
   int reg;
   if(-1 == (reg = parse_reg_term(term))) {
@@ -142,11 +173,14 @@ int tokenize_reg(char *term, TokVal_t *tokval)
   return 0;
 }
 
-/* attempts to process the term as an immediate token,
- * on success updates tokval with the immediate value and returns 0;
- * on failure tokval is not modified and -1 is returned.
- * */
-int tokenize_immed(char *term, TokVal_t *tokval)
+
+/* 
+ * Attempts to process the term as an immediate token,
+ * on success updates tokval with the immediate value and returns 0.
+ * On failure tokval is not modified and -1 is returned.
+ */
+static int  /* nonzero on failure */
+tokenize_immed(char *term, TokVal_t *tokval)
 {
 
   long immed;
@@ -161,14 +195,16 @@ int tokenize_immed(char *term, TokVal_t *tokval)
 }
 
 
-/* a string begins and ends with a double quotation mark and consists only of printable chars.
- * * returns 0 iff the term is not a valid string.
- * */
-int is_string(char *term)
+/* 
+ * A string begins and ends with a double quotation mark and consists only of printable chars.
+ * Returns 0 iff the term is not a valid string.
+ */
+static int  /* nonzero on failure */
+is_string(char *term)
 {
 
   int i, len = strlen(term);
-  if (!(term[0] == '"') || !(term[len-1] == '"')) {
+  if (len < 2 || !(term[0] == '"') || !(term[len-1] == '"')) {
     return 0;
   }
   for(i=0; i<len; i++) {
@@ -179,10 +215,13 @@ int is_string(char *term)
   return 1;
 }
 
-/* a label begins with an alphabet letter followed by a sequence of alphanumeric characters.
- * returns 0 iff the term is not a valid label.
- * */
-int is_label(char *label)
+
+/* 
+ * A label begins with an alphabet letter followed by a sequence of alphanumeric characters.
+ * Returns 0 iff the term is not a valid label.
+ */
+static int  /* nonzero on failure */
+is_label(char *label)
 {
   int i;
   if(!isalpha(label[0])) {
@@ -196,10 +235,13 @@ int is_label(char *label)
   return 1;
 }
 
-/* a label definition consists of a label and a colon (':') at the end.
- * returns 0 iff the term is not a valid init label.
- * */
-int is_labeldef(char *term)
+
+/* 
+ * A label definition consists of a label and a colon (':') at the end.
+ * Returns 0 iff the term is not a valid init label.
+ */
+static int  /* nonzero on failure */
+is_labeldef(char *term)
 {
   int len = strlen(term);
   /* a label token must end with ':'*/
@@ -216,12 +258,15 @@ int is_labeldef(char *term)
   return 1;
 }
 
-/* a register consists of the char '$' followed by a number.
+
+/* 
+ * A register consists of the char '$' followed by a number.
  *  e.g.: $0, $1, $2, ..., $31
- * if `reg` does not begin with a '$', returns -1.
- * else returns its id (the number after the '$') if it is valid, or -2 otherwise.
- * */
-int parse_reg_term(char *term)
+ * If `reg` does not begin with a '$', returns -1.
+ * Else returns its id (the number after the '$') if it is valid, or -2 otherwise.
+ */
+static int  /* nonzero on failure */
+parse_reg_term(char *term)
 {
   /* a register must begin with '$' */
   if(term[0] != '$') {  /* not a register term */
@@ -236,9 +281,13 @@ int parse_reg_term(char *term)
 }
 
 
-/* Returns the appropriate token for the give term.
- * */
-Token_t tokenize_term(char *term)
+/*
+ * Returns the appropriate token for the given term.
+ * If no other token type matches the term, a token with
+ * token type TOK_ERR is returned.
+ */
+static Token_t  /* the token that matches the term */
+tokenize_term(char *term)
 {
   Token_t token;
   token.type = TOK_ERR;
@@ -246,7 +295,7 @@ Token_t tokenize_term(char *term)
     token.type = TOK_END; 
   } else if(*term == '\0') {  /* empty string */
     token.type = TOK_EMPTY; 
-  } else if(term[0] == ';') {
+  } else if(term[0] == COMMENT_CHAR) {
     token.type = TOK_COMMENT;
   } else if(-1 != tokenize_op(term, &token.value)) {
     token.type = TOK_OP;
@@ -267,15 +316,18 @@ Token_t tokenize_term(char *term)
   return token;
 }
 
-/* returns the next token in line, which can be then
+
+/* 
+ * Returns the next token in line, which can be then
  * used to parse an assembly statement from that line.
- * usage:
- *  like strtok, the first call should provide the actual line pointer
+ * Usage:
+ *  Like strtok, the first call should provide the actual line pointer
  *  and all successive calls that operate on the same line should
  *  provide NULL as the line pointer.
- *  returns the next token. (if there are no more tokens, a token of type TOK_END is returned).
- **/
-Token_t next_token(char *line)
+ *  Returns the next token (if there are no more tokens, a token of type TOK_END is returned).
+ */
+Token_t /* the next token in line */
+next_token(char *line)
 {
   static char *next;
   static char *source;
@@ -303,26 +355,25 @@ Token_t next_token(char *line)
 }
 
 
-/* obtains and returns one term from the beginning of the line.
- * if none flags are set, the default delimiter is "\t \n" (tabs, spaces & newlines)
+/* 
+ * Obtains and returns one term from the beginning of the line.
+ * If none flags are set, the default delimiter is "\t \n" (tabs, spaces & newlines)
  * returns NULL when there are no terms (line containts only delimiter characters).
  * flags affect the returned term as follows:
- * EXP_STRING - respects quotation marks by altering the default delimiter.
+ * EXP_STRING - Respects quotation marks by altering the default delimiter.
  *      i.e., '"hello world"' is recognized as one term - '"hello world"',
  *      instead of two terms: '"hello' and 'world"'
- * EXP_ARRAY - changes the delimiter to ','. array syntax is as follows:
+ * EXP_ARRAY - Changes the delimiter to ','. array syntax is as follows:
  *      terms are separated by exactly one comma (',') optionally surrounded by whitespace
  *      characters.
- **/
-char* next_term(char *line)
+ */
+static char*  /* the next term in line */
+next_term(char *line)
 {
-  char *term;
   line = strip_wspace(line);
   /* expect string */
   if(expect == EXP_STRING) {
-    if (NULL != (term = next_string(line))) {
-      return term;
-    }
+    return next_string(line);
   }
   /* expect array item */
   else if(expect == EXP_ARRAY) {
@@ -332,14 +383,20 @@ char* next_term(char *line)
   return strtok(line, WSPACE_CHARS);
 }
 
-char* next_string(char *line)
+
+/*
+ * Returns the next term under the assumption that it is a string.
+ * See the handling of EXP_STRING flag in function next_term.
+ */
+static char*  /* the next string */
+next_string(char *line)
 {
   int i;
   if(line[0] != '"') {
     return NULL;
   }
-  for(i=1; line[i] != '"' && line[i] != '\0'; i++) {}
-  if(line[i] == '\0' || (line[i+1] != '\0' && !isspace(line[i+1]))) {
+  for(i=strlen(line)-1; i>0 && line[i] != '"'; i--) {}
+  if(i <= 0  || (line[i+1] != '\0' && !isspace(line[i+1]))) {
     return NULL;
   } else {
     line[i+1] = '\0';
@@ -348,7 +405,12 @@ char* next_string(char *line)
 }
 
 
-char* next_array_item(char *line)
+/*
+ * Returns the next term under the assumption that it is part of an array.
+ * See the handling of EXP_ARRAY flag in function next_term.
+ */
+static char*  /* the next array item */
+next_array_item(char *line)
 {
   int j;
   if(*line == '\0') {
@@ -363,9 +425,12 @@ char* next_array_item(char *line)
   return line;
 }
 
-/* strips the term of both trailing and leading whitespace characters.
- **/
-char* strip_wspace(char *term)
+
+/*
+ * Strips the term of both trailing and leading whitespace characters.
+ */
+static char*  /* the stripped term */
+strip_wspace(char *term)
 {
   int i,j;
   if(term == NULL) {

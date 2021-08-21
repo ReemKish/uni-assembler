@@ -1,12 +1,19 @@
+/* ===== consts.h =========================================
+ * Program constants and enumerations.
+ * Among various constants, includes the OpId enum, which associates
+ * between operation names and their opcode & funct constants.
+ */
 #ifndef CONSTS_H
 #define CONSTS_H
 
+
 /* ----- limits --------------------------------- */
-#define MAX_LINE_LEN    80
+#define MAX_PROG_LINES  2048  /* maximum lines of code in the input assembly program */
 #define MAX_OPNAME_LEN  4
 #define MAX_LABEL_LEN   32
-#define MAX_PROG_LINES  2048  /* maximum lines of code in the input assembly program */
-#define MAX_PROG_MEMORY (MAX_PROG_LINES * MAX_LINE_LEN / 2)
+#define MAX_LINE_LEN    80
+#define LINE_BUFFER_SIZE (MAX_LINE_LEN*10)
+#define MAX_PROG_MEMORY  (MAX_PROG_LINES * MAX_LINE_LEN / 2)
 
 /* ----- syntax --------------------------------- */
 #define COMMENT_CHAR ';'
@@ -14,22 +21,27 @@
 /* ----- encoding ------------------------------- */
 #define INITIAL_IC  100
 
-/* ----- tokenizing ----------------------------- */
+/* ----- tokenization --------------------------- */
 #define WSPACE_CHARS " \f\n\r\t\v"
+
+/* ----- launguage encoding specifications ------ */
+#define ENC_OPCODE_POS      (26)
+#define ENC_REG_RD_POS      (11)
+#define ENC_REG_RT_POS      (16)
+#define ENC_REG_RS_POS      (21)
+#define ENC_RTYPE_FUNCT_POS (6)
+#define ENC_IOP_IMMED_MASK  (0xFFFF)
+#define ENC_JOP_ADDR_MASK   (0x1FFFFFF)
+#define ENC_JOP_REG_POS     (25)
 
 
 /* ----- operation names and types -------------- */
 #define FUNCT_SHIFT 6
 #define OPCODE_MASK ((1 << FUNCT_SHIFT) - 1)
-#define OPID_TO_OPTYPE(opid)     ((opid) >> FUNCT_SHIFT ? OPTYPE_R : ((opid) > 24 ? OPTYPE_J : OPTYPE_I))
-#define OPCODE_TO_OPTYPE(opcode) (((opcode) == 0 || (opcode) == 1) ? OPTYPE_R : ((opcode) > 24 ? OPTYPE_J : OPTYPE_I))
-#define IS_BRANCH_OP(opcode) (15 <= (opcode) && (opcode) <= 18)
+#define OPID_TO_OPTYPE(opid)     ((opid) >> FUNCT_SHIFT ? OPTYPE_R : ((opid) > OP_SH ? OPTYPE_J : OPTYPE_I))
+#define OPCODE_TO_OPTYPE(opcode) (((opcode) == 0 || (opcode) == 1) ? OPTYPE_R : ((opcode) > OP_SH ? OPTYPE_J : OPTYPE_I))
+#define IS_BRANCH_OP(opcode) (OP_BNE <= (opcode) && (opcode) <= OP_BGT)
 
-enum OpType {
-  OPTYPE_R,
-  OPTYPE_I,
-  OPTYPE_J
-};
 
 enum OpId {
   /* R-type */
@@ -64,16 +76,6 @@ enum OpId {
   OP_LA   = 31,
   OP_CALL = 32,
   OP_STOP = 63
-};
-
-enum DirId {
-  DIR_INVALID,
-  DIR_DB,
-  DIR_DW,
-  DIR_DH,
-  DIR_ASCIZ,
-  DIR_ENTRY,
-  DIR_EXTERN
 };
 
 
