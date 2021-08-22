@@ -209,6 +209,13 @@ main(int argc, char** argv)
   size_t i;
   FILE *file;
 
+  /*int n = 1;
+  printf("integer: %ld\n", -1 * (1L << ((n)-1)));
+  printf("integer: %d\n", (~0 << ((n)-1)));
+
+  printf("integer: %ld\n", (1L << ((n)-1)));
+  printf("integer: %d\n", ~(~0 << ((n)-1)));*/
+
   if (argc < 2)  /* no cmdline arguments - print error and exit */
     error(EXIT_FAILURE, 0, NOARGS_ERR"\n"HELP_TEXT, argv[0]);
 

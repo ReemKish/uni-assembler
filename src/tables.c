@@ -145,7 +145,7 @@ init_symtable()
 {
   symtable_maxsize = 2;
   symtable_size = 0;
-  symtable = realloc(symtable, symtable_maxsize * sizeof(SymbolEntry_t));
+  symtable = calloc(symtable_maxsize , sizeof(SymbolEntry_t));
 }
 
 /*

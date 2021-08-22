@@ -1,3 +1,4 @@
+$(shell mkdir -p bin)
 IDIR = src
 ODIR = bin
 CC=gcc

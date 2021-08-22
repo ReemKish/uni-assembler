@@ -210,7 +210,7 @@ void
 write_memory_image(Statement_t *statements)
 {
   int i;
-  Statement_t stm = statements[0];
+  Statement_t stm = *statements;
   Error_t warning;
   warning.line = NULL;
   warning.tok.ind = -1;
@@ -264,7 +264,7 @@ write_instruction_image(Statement_t *statements)
   error.errid = 0;
   error.line = NULL;
   error.tok.ind = -1;
-  for(i=0; stm.type != STATEMENT_END; stm = statements[i++]) {
+  for(i=1; stm.type != STATEMENT_END; stm = statements[i++]) {
     op = &stm.inst.op_inst.op;
     if(stm.type == STATEMENT_OPERATION) {
       /* set label adderss for operations that require labels */
@@ -287,6 +287,7 @@ write_instruction_image(Statement_t *statements)
       if(error.errid != 0) {
         error.line_ind = stm.line_ind;
         print_error(error);
+        error.errid = 0;
       }
       inst_enc = encode_op_stm(stm.inst.op_inst);
       write_instruction(inst_enc);

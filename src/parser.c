@@ -23,7 +23,7 @@
 
 /* ===== CPP Definitions ================================== */
 /* evaluates to 1 iff x is in bounds of signed int with n bits */
-#define IN_BOUNDS(x,n) ((-1 * (1L << ((n)-1)) <= (x)) && ((x) < (1L << ((n)-1))))
+#define IN_BOUNDS(x,n) ((~0 << ((n)-1) <= (x)) && ((x) <= ~(~0 << ((n)-1))))
 
 /* ===== Declarations ===================================== */
 static Error_t error;   /* errno for statement errors */
@@ -41,6 +41,7 @@ static int parse_reg     (Token_t tok, Statement_t *stm, long *flags);
 static int parse_immed   (Token_t tok, Statement_t *stm, long *flags);
 static int parse_string  (Token_t tok, Statement_t *stm, long *flags);
 static int parse_line(char *line, Statement_t *statement);
+static int immed_in_bounds(Statement_t stm, long immed);
 
 /* ===== Code ============================================= */
 
@@ -242,19 +243,13 @@ parse_immed(Token_t tok, Statement_t *stm, long *flags)
   struct AtypeDir *Adir = &(stm->inst.di_inst.dir.Adir);
   int size=0, i;
   int immed = tok.value.immed;
+  if(0 == (size = immed_in_bounds(*stm, immed)))
+    return EINVAL_IMMED;
   /* determine which operand corresponds to the register */
   if (stm->type == STATEMENT_OPERATION) {
     stm->inst.op_inst.op.Iop.immed = immed;
-    if(!IN_BOUNDS(immed, 16))
-      return EINVAL_IMMED;
     *flags = EXP_REG | REG_RT;
   } else {
-    switch(stm->inst.di_inst.dirid) {
-      case DIR_DB: size = 1; break;
-      case DIR_DH: size = 2; break;
-      case DIR_DW: size = 4; break;
-      default: break;
-    }
     if(!IN_BOUNDS(immed, size*8)) {
       return EINVAL_IMMED;
     }
@@ -266,6 +261,46 @@ parse_immed(Token_t tok, Statement_t *stm, long *flags)
     *flags = EXP_IMMED | EXP_END;
   }
   return 0;
+}
+
+
+/*
+ * Determines whether the immediate value is within bounds
+ * given the context of the current statement.
+ * e.g: 130 is within bounds in context of a lw instruction,
+ *      but noy within bounds in context of a .db instruction.
+ * If the immediate is within bounds, returns the size (in bytes)
+ *  of an immediate in that context - a nonzero value.
+ * Rlse returns 0.
+ */
+static int  /* size of an immediate in context of the statement */
+immed_in_bounds(Statement_t stm, long immed)
+{
+  int size = 2;
+  if (stm.type == STATEMENT_OPERATION) {
+    switch(stm.inst.op_inst.opcode) {
+      case OP_LB:
+      case OP_SB:
+        size = 1; break;
+      case OP_LH:
+      case OP_SH:
+        size = 2; break;
+      case OP_LW:
+      case OP_SW:
+        size = 4; break;
+      default: break;
+    }
+  } else if(stm.type == STATEMENT_DIRECTIVE) {
+    switch(stm.inst.di_inst.dirid) {
+      case DIR_DB: size = 1; break;
+      case DIR_DH: size = 2; break;
+      case DIR_DW: size = 4; break;
+      default: break;
+    }
+  }
+  if(!IN_BOUNDS(immed, size*8))
+    return 0;
+  return size;
 }
 
 

@@ -164,7 +164,7 @@ typedef union TokVal {
   enum OpId opid;     /* corresponds to type TOK_OP */
   enum DirId dirid;		/* corresponds to type TOK_DIR */
   char *str;      		/* corresponds to type TOK_STRING */
-  int immed;		      /* corresponds to type TOK_IMMED */
+  long immed;		      /* corresponds to type TOK_IMMED */
   int reg;        		/* corresponds to type TOK_REG */
   char *label;	    	/* corresponds to type TOK_LABEL or TOK_LABELDEF */
 } TokVal_t;
