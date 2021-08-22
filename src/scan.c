@@ -295,7 +295,7 @@ write_instruction_image(Statement_t *statements)
   }
   /* iterate over symbol table and check for  */
   check_symtable_integrity(&error);
-  if(error.errid > 0)  /* errid is not a warning */
+  if(error.errid != 0 && error.errid < ___WARNINGS___)  /* errid is not a warning */
     error_occurred = 1;
 }
 

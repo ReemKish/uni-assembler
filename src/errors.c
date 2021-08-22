@@ -13,9 +13,9 @@
 /* ===== CPP definitons =================================== */
 /* ANSI color escape sequences */
 #define COLOR_RED_B     "\033[1;31m"  /* bold red      */
+#define COLOR_RED       "\033[0;31m"  /* red           */
 #define COLOR_WHITE_B   "\033[1;37m"  /* bold white    */
-#define COLOR_PURPLE    "\033[0;35m"  /* purple        */
-#define COLOR_PURPLE_B  "\033[1;35m"  /* bold purple        */
+#define COLOR_PURPLE_B  "\033[1;35m"  /* bold purple   */
 #define COLOR_RESET     "\033[0m"     /* default color */
 
 /* padding macros to determine count of whitespace characters when printing errors */
@@ -30,6 +30,7 @@ int error_occurred;     /* 0 iff no errors occured */
 void print_error(Error_t error);
 static void print_errstr_unexpectedtok(long flags);
 static void print_errstr(Error_t error);
+static const char* err_to_string(enum ErrId id);
 
 /* ===== Code ============================================= */
 
@@ -90,64 +91,30 @@ print_errstr(Error_t error)
   switch(errid) {
     /* syntax errors */
     case EUNEXPECTED_EOL:
-      printf(EMSG_UNEXPECTED_EOL "; ");
+      printf("%s", err_to_string(EUNEXPECTED_EOL));
+      printf("; ");
     case EUNKNOWN_TOK:
     case EUNEXPECTED_TOK:
       print_errstr_unexpectedtok(error.flags);
       break;
-    case EINVAL_DIR:
-            printf(EMSG_INVAL_DIR);
-            break;
-    case EINVAL_REG:
-            printf(EMSG_INVAL_REG);
-            break;
-    case EINVAL_IMMED:
-            printf(EMSG_INVAL_IMMED);
-            break;
-    case EINVAL_LABEL:
-            printf(EMSG_INVAL_LABEL);
-            break;
-    case ELONG_LABEL:
-            printf(EMSG_LONG_LABEL);
-            break;
-    case ELONG_LINE:
-            printf(EMSG_LONG_LINE);
-            break;
-    /* parsing errors */
-    case ELABEL_UNDEFINED:
-            printf(EMSG_LABEL_UNDEFINED);
-            break;
-    case ELABEL_SCOPE_MISMATCH:
-            printf(EMSG_LABEL_SCOPE_MISMATCH);
-            break;
-    case ELABEL_EXT_DEF:
-            printf(EMSG_LABEL_EXT_DEF);
-            break;
-    case ELABEL_DOUBLE_DEF:
-            printf(EMSG_LABEL_DOUBLE_DEF);
-            break;
-    case ELABEL_EXP_DATA:
-            printf(EMSG_LABEL_EXP_DATA);
-            break;
-    case ELABEL_EXP_CODE:
-            printf(EMSG_LABEL_EXP_CODE);
-            break;
-    case ELABEL_ENT_UNDEF:
-            printf(EMSG_LABEL_ENT_UNDEF);
-            break;
-    case ELABEL_UNEXP_EXT:
-            printf(EMSG_LABEL_UNEXP_EXT);
-            break;
-    case WLABEL_JMP2DATA:
-            printf(WMSG_LABEL_JMP2DATA);
-            break;
-    case WLABEL_DEF_ENTRY:
-            printf(WMSG_LABEL_DEF_ENTRY);
-            break;
-    case WLABEL_DEF_EXTERN:
-            printf(WMSG_LABEL_DEF_EXTERN);
-            break;
+    default:
+      printf("%s", err_to_string(errid));
     }
+}
+
+
+/*
+ * Returns the error string of the given error.
+ */
+static const char*  /* the error string */
+err_to_string(enum ErrId id) {
+  #define ERR_TEXT(id, text) text,
+  static const char* table[] = {
+    NULL,
+    ERR_TABLE(ERR_TEXT)
+  };
+  #undef ERR_TEXT
+  return table[id];
 }
 
 
@@ -168,7 +135,7 @@ print_error(Error_t error)
   int has_line    /* 1 iff the error includes the erroneous line string */ 
     = error.line != NULL;
   int is_warning  /* 1 iff the error is non critical (a warning) */
-    = error.errid < 0;
+    = error.errid != 0 && error.errid > ___WARNINGS___;
 
   /* error base (same for all errors) */
   printf(COLOR_WHITE_B"%s:%d:", filename, error.line_ind);
@@ -200,7 +167,7 @@ print_error(Error_t error)
   /* if provided, specifiey the erroneous token */
   if(has_line && has_tok) {
     for (i=0; i<error.tok.ind-1; i++) printf(error.line[i] == '\t' ? "\t" : " ");
-    printf(COLOR_PURPLE"^^^"COLOR_RESET);  
+    printf(COLOR_RED"^^^"COLOR_RESET);  
   }
   printf("\n");
 }

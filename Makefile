@@ -2,7 +2,7 @@ $(shell mkdir -p bin)
 IDIR = src
 ODIR = bin
 CC=gcc
-CFLAGS += -I$(IDIR) -Wall -ansi -pedantic -g
+CFLAGS += -I$(IDIR) -Wall -ansi -pedantic
 
 _DEPS = types.h consts.h
 DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))

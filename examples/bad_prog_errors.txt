@@ -1,0 +1,72 @@
+bad_prog.as:8:16:   error: expected a register
+   8 | 	    move  $1,   mov
+     | 	               ^^^
+bad_prog.as:9:10:   error: expected a label
+   9 | 	    call  "STRING"
+     | 	         ^^^
+bad_prog.as:10:0:   error: expected an operation, directive or label definition
+  10 | 	_L: stop
+     | 	^^^
+bad_prog.as:11:10:  error: expected a label or register
+  11 | 	    jmp   42
+     | 	         ^^^
+bad_prog.as:12:2:   error: unrecognized directive
+  12 | 	  . asciz "Hello World!"
+     | 	 ^^^
+bad_prog.as:15:19:  error: unexpected end of line; expected a register
+  15 | 	    add   $1,   $2
+     | 	                  ^^^
+bad_prog.as:18:12:  error: unrecognized directive
+  18 | 	ValidLabel: .invaldir 12, 35
+     | 	           ^^^
+bad_prog.as:19:4:   error: unrecognized directive
+  19 | 	    .Db   12,   35
+     | 	   ^^^
+bad_prog.as:22:16:  error: invalid register
+  22 | 	    add   $1,   $+2,  $5
+     | 	               ^^^
+bad_prog.as:23:10:  error: invalid register
+  23 | 	    add   $-1,  $2,   $5
+     | 	         ^^^
+bad_prog.as:24:10:  error: invalid register
+  24 | 	    add   $+0,  $2.0, $+5*7
+     | 	         ^^^
+bad_prog.as:25:10:  error: invalid register
+  25 | 	    add   $1e1, $2e0, $5
+     | 	         ^^^
+bad_prog.as:26:10:  error: invalid register
+  26 | 	    add   $1    $2,   $3
+     | 	         ^^^
+bad_prog.as:29:17:  error: numeric literal out of bounds
+  29 | 	    .db   0,  1, 128
+     | 	                ^^^
+bad_prog.as:30:13:  error: numeric literal out of bounds
+  30 | 	    .dh   0, -32769, 6
+     | 	            ^^^
+bad_prog.as:32:14:  error: numeric literal out of bounds
+  32 | 	    addi  $1, 4353464562, $5
+     | 	             ^^^
+bad_prog.as:35:4:   error: label name is a reserved word
+  35 | 	    addi:   addi $1,10,$1
+     | 	   ^^^
+bad_prog.as:36:4:   error: label name is a reserved word
+  36 | 	    asciz:  stop
+     | 	   ^^^
+bad_prog.as:37:4:   error: label name is a reserved word
+  37 | 	    dh:     jmp ValidLabel
+     | 	   ^^^
+bad_prog.as:40:0:   error: label name exceeds character limit
+  40 | 	SuperCaliFragelisticExpialyDoeuicousLavl: stop
+     | 	^^^
+bad_prog.as:43:  error: line exceeds character limit
+  43 | 	    .dw 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 213, 31415, 345, 2134, -123, -124, 124435, 123, -1324
+     | 	
+bad_prog.as:51:  error: label defined as both external and an entry
+bad_prog.as:55:  error: label declared external but defined in file
+bad_prog.as:59:  error: label defined more than once
+bad_prog.as:70:  warning: redundant label definition on .entry statement
+bad_prog.as:73:  warning: redundant label definition on .extern statement
+bad_prog.as:46:  error: refrence to undefined label
+bad_prog.as:63:  error: external label operand to branch operation
+bad_prog.as:67:  warning: attempted jump to data symbol
+bad_prog.as:50:  error: label declared entry but not defined in file
